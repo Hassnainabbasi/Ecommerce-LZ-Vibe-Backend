@@ -24,6 +24,104 @@ router.get("/", async (req, res) => {
   }
 });
 
+// ---------------- BULK IMPORT CATEGORIES ----------------
+const MAX_BULK_CATEGORIES = 500;
+
+router.post("/bulk-import", verifyAdmin, async (req, res) => {
+  try {
+    const raw = req.body?.categories ?? req.body;
+    if (!Array.isArray(raw)) {
+      return res.status(400).json({
+        success: false,
+        error: "Request body must be an array or { categories: [...] }",
+      });
+    }
+
+    if (raw.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "categories array cannot be empty",
+      });
+    }
+
+    if (raw.length > MAX_BULK_CATEGORIES) {
+      return res.status(400).json({
+        success: false,
+        error: `Maximum ${MAX_BULK_CATEGORIES} categories per request`,
+      });
+    }
+
+    const inserted = [];
+    const skipped = [];
+    const errors = [];
+    const seenNames = new Set();
+
+    for (let i = 0; i < raw.length; i++) {
+      const row = raw[i];
+      const name = typeof row?.name === "string" ? row.name.trim() : "";
+      if (!name) {
+        errors.push({ index: i, reason: "name is required" });
+        continue;
+      }
+
+      const normalized = name.toLowerCase();
+      if (seenNames.has(normalized)) {
+        skipped.push({ index: i, name: normalized, reason: "duplicate in payload" });
+        continue;
+      }
+      seenNames.add(normalized);
+
+      const existing = await Category.findOne({ name: normalized });
+      if (existing) {
+        skipped.push({ index: i, name: normalized, reason: "already exists" });
+        continue;
+      }
+
+      try {
+        const doc = new Category({
+          name: normalized,
+          description:
+            typeof row.description === "string" ? row.description.trim() : "",
+          image: typeof row.image === "string" ? row.image.trim() : "",
+          isActive: row.isActive !== undefined ? Boolean(row.isActive) : true,
+        });
+        await doc.save();
+        inserted.push(doc);
+      } catch (e) {
+        if (e.code === 11000) {
+          skipped.push({ index: i, name: normalized, reason: "already exists" });
+        } else {
+          errors.push({
+            index: i,
+            name: normalized,
+            reason: e.message || "save failed",
+          });
+        }
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Bulk import completed",
+      summary: {
+        total: raw.length,
+        inserted: inserted.length,
+        skipped: skipped.length,
+        errors: errors.length,
+      },
+      inserted,
+      skipped,
+      errors,
+    });
+  } catch (err) {
+    console.error("❌ POST /api/categories/bulk-import ERROR:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message || "Bulk import failed",
+    });
+  }
+});
+
 // ---------------- GET SINGLE CATEGORY ----------------
 router.get("/:id", async (req, res) => {
   try {

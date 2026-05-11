@@ -164,6 +164,169 @@ router.get("/", async (req, res) => {
   }
 });
 
+// ---------------- BULK IMPORT PRODUCTS ----------------
+const MAX_BULK_PRODUCTS = 500;
+
+function normalizeFlavorForBulk(flavor) {
+  if (flavor == null || flavor === "") return [];
+  if (Array.isArray(flavor)) {
+    return flavor.map(String).map((s) => s.trim()).filter(Boolean);
+  }
+  return String(flavor)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+router.post("/bulk-import", verifyAdmin, async (req, res) => {
+  try {
+    const raw = req.body?.products ?? req.body;
+    if (!Array.isArray(raw)) {
+      return res.status(400).json({
+        success: false,
+        error: "Request body must be an array or { products: [...] }",
+      });
+    }
+
+    if (raw.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "products array cannot be empty",
+      });
+    }
+
+    if (raw.length > MAX_BULK_PRODUCTS) {
+      return res.status(400).json({
+        success: false,
+        error: `Maximum ${MAX_BULK_PRODUCTS} products per request`,
+      });
+    }
+
+    const activeCategories = await Category.find({ isActive: true })
+      .select("name")
+      .lean();
+    const activeSet = new Set(activeCategories.map((c) => c.name));
+
+    const inserted = [];
+    const errors = [];
+
+    for (let i = 0; i < raw.length; i++) {
+      const row = raw[i];
+      const name =
+        typeof row?.name === "string" ? row.name.trim() : String(row?.name ?? "").trim();
+      const categoryRaw = row?.category;
+      const category =
+        typeof categoryRaw === "string"
+          ? categoryRaw.toLowerCase().trim()
+          : String(categoryRaw ?? "")
+              .toLowerCase()
+              .trim();
+      const numPrice = Number(row?.price);
+
+      if (!name || !category || row?.price == null || row?.price === "") {
+        errors.push({
+          index: i,
+          reason: "name, category, and price are required",
+        });
+        continue;
+      }
+
+      if (isNaN(numPrice) || numPrice <= 0) {
+        errors.push({
+          index: i,
+          reason: "price must be a valid positive number",
+          received: row?.price,
+        });
+        continue;
+      }
+
+      if (!activeSet.has(category)) {
+        errors.push({
+          index: i,
+          reason: "invalid or inactive category",
+          received: categoryRaw,
+        });
+        continue;
+      }
+
+      const weight =
+        row.weight != null && row.weight !== ""
+          ? String(row.weight).trim()
+          : "";
+      const image =
+        typeof row.image === "string" && row.image.trim()
+          ? row.image.trim()
+          : "/images/placeholder.png";
+
+      let productId =
+        typeof row.productId === "string" && row.productId.trim()
+          ? row.productId.trim()
+          : `PROD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}`;
+
+      try {
+        const doc = new Product({
+          productId,
+          name,
+          category,
+          price: numPrice,
+          weight,
+          flavor: normalizeFlavorForBulk(row.flavor),
+          image,
+        });
+        await doc.save();
+        inserted.push(doc);
+      } catch (e) {
+        if (e.code === 11000) {
+          productId = `PROD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}-r`;
+          try {
+            const doc = new Product({
+              productId,
+              name,
+              category,
+              price: numPrice,
+              weight,
+              flavor: normalizeFlavorForBulk(row.flavor),
+              image,
+            });
+            await doc.save();
+            inserted.push(doc);
+          } catch (e2) {
+            errors.push({
+              index: i,
+              name,
+              reason: e2.message || "duplicate productId, retry failed",
+            });
+          }
+        } else {
+          errors.push({
+            index: i,
+            name,
+            reason: e.message || "save failed",
+          });
+        }
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Bulk import completed",
+      summary: {
+        total: raw.length,
+        inserted: inserted.length,
+        errors: errors.length,
+      },
+      inserted,
+      errors,
+    });
+  } catch (err) {
+    console.error("❌ POST /products/bulk-import ERROR:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message || "Bulk import failed",
+    });
+  }
+});
+
 // ---------------- GET SINGLE PRODUCT ----------------
 router.get("/:id", async (req, res) => {
   try {
