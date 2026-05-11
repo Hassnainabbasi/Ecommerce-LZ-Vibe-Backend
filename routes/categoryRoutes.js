@@ -1,6 +1,7 @@
 import express from "express";
 import Category from "../models/Category.js";
 import { verifyAdmin } from "../middleware/auth.js";
+import { uploadImageToCloudinary } from "../utils/cloudinaryUpload.js";
 
 const router = express.Router();
 
@@ -77,12 +78,28 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
         continue;
       }
 
+      let imageUrl = "";
+      if (typeof row.image === "string" && row.image.trim()) {
+        try {
+          imageUrl =
+            (await uploadImageToCloudinary(row.image.trim(), "categories")) ||
+            "";
+        } catch (e) {
+          errors.push({
+            index: i,
+            name: normalized,
+            reason: `image upload failed: ${e.message}`,
+          });
+          continue;
+        }
+      }
+
       try {
         const doc = new Category({
           name: normalized,
           description:
             typeof row.description === "string" ? row.description.trim() : "",
-          image: typeof row.image === "string" ? row.image.trim() : "",
+          image: imageUrl,
           isActive: row.isActive !== undefined ? Boolean(row.isActive) : true,
         });
         await doc.save();
@@ -176,11 +193,24 @@ router.post("/", verifyAdmin, async (req, res) => {
       });
     }
 
+    let imageField = "";
+    if (image && typeof image === "string" && image.trim()) {
+      try {
+        imageField =
+          (await uploadImageToCloudinary(image.trim(), "categories")) || "";
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          error: `Image upload failed: ${e.message}`
+        });
+      }
+    }
+
     // Create category
     const newCategory = new Category({
       name: name.toLowerCase().trim(),
       description: description?.trim() || "",
-      image: image?.trim() || "",
+      image: imageField,
       isActive: isActive !== undefined ? isActive : true
     });
 
@@ -239,7 +269,21 @@ router.put("/:id", verifyAdmin, async (req, res) => {
       updateData.description = description.trim();
     }
     if (image !== undefined) {
-      updateData.image = image.trim();
+      const trimmedImg =
+        typeof image === "string" ? image.trim() : "";
+      if (!trimmedImg) {
+        updateData.image = "";
+      } else {
+        try {
+          updateData.image =
+            (await uploadImageToCloudinary(trimmedImg, "categories")) || "";
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            error: `Image upload failed: ${e.message}`
+          });
+        }
+      }
     }
     if (isActive !== undefined) {
       updateData.isActive = isActive;

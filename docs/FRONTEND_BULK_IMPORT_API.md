@@ -65,7 +65,7 @@ Aam errors: `401` token galat / expire, `403` token nahi mila ya admin nahi.
 |--------|----------|------|
 | `name` | Haan | string; server khud lowercase + trim karta hai |
 | `description` | Nahi | string; agar na ho to `""` |
-| `image` | Nahi | string URL/path; default `""` |
+| `image` | Nahi | Remote URL ya base64 — Cloudinary pe upload ho kar **secure URL** DB mein jati hai. Na ho to `""`. Tumhari Cloudinary pe pehle se hosted URL ho to skip re-upload |
 | `isActive` | Nahi | boolean; default `true` |
 
 ### Limit
@@ -131,7 +131,7 @@ Aam errors: `401` token galat / expire, `403` token nahi mila ya admin nahi.
 | `price` | Haan | number, 0 se bara |
 | `weight` | Nahi | string |
 | `flavor` | Nahi | string (comma se flavours alag), ya string array, ya skip → `[]` |
-| `image` | Nahi | URL string; na ho to `"/images/placeholder.png"` |
+| `image` | Nahi | Remote URL ya base64 — Cloudinary pe upload ho kar **secure URL** DB mein jati hai. Na ho to placeholder `"/images/placeholder.png"` (ye local path hai, upload nahi). Tumhari Cloudinary pe pehle se hosted URL ho to skip re-upload |
 | `productId` | Nahi | unique; na do to server khud bana deta hai |
 
 ### Zaroori baat: category pehle honi chahiye

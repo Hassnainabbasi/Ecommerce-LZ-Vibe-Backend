@@ -2,41 +2,14 @@ import express from "express";
 import Product from "../models/Product.js";
 import Category from "../models/Category.js";
 import { verifyAdmin } from "../middleware/auth.js";
-import { v2 as cloudinary } from "cloudinary";
+import {
+  cloudinary,
+  uploadImageToCloudinary,
+} from "../utils/cloudinaryUpload.js";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import multer from "multer";
 
 const router = express.Router();
-
-// ---------------- CLOUDINARY CONFIG ----------------
-// try {
-//   cloudinary.config({
-//     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-//     api_key: process.env.CLOUDINARY_API_KEY,
-//     api_secret: process.env.CLOUDINARY_API_SECRET,
-//   });
-//   console.log("✅ Cloudinary configured");
-// } catch (err) {
-//   console.error("❌ Cloudinary config error:", err);
-// }
-// Trim env variables to avoid accidental whitespace/newline issues which
-// can cause Cloudinary signature mismatches.
-const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME?.trim();
-const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY?.trim();
-const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET?.trim();
-
-cloudinary.config({
-  cloud_name: CLOUDINARY_CLOUD_NAME,
-  api_key: CLOUDINARY_API_KEY,
-  api_secret: CLOUDINARY_API_SECRET,
-});
-
-console.log("🔍 Cloudinary ENV:", {
-  name: CLOUDINARY_CLOUD_NAME || "❌ Missing",
-  key: CLOUDINARY_API_KEY ? "✅ Loaded" : "❌ Missing",
-  secret: CLOUDINARY_API_SECRET ? "✅ Loaded" : "❌ Missing",
-});
-console.log("✅ Cloudinary configured (values trimmed)");
 // ---------------- MULTER + CLOUDINARY STORAGE ----------------
 // ---------------- CLOUDINARY STORAGE ----------------
 const storage = new CloudinaryStorage({
@@ -253,10 +226,23 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
         row.weight != null && row.weight !== ""
           ? String(row.weight).trim()
           : "";
-      const image =
-        typeof row.image === "string" && row.image.trim()
-          ? row.image.trim()
-          : "/images/placeholder.png";
+
+      let image = "/images/placeholder.png";
+      if (typeof row.image === "string" && row.image.trim()) {
+        try {
+          const uploaded = await uploadImageToCloudinary(
+            row.image.trim(),
+            "products"
+          );
+          if (uploaded) image = uploaded;
+        } catch (e) {
+          errors.push({
+            index: i,
+            reason: `image upload failed: ${e.message}`,
+          });
+          continue;
+        }
+      }
 
       let productId =
         typeof row.productId === "string" && row.productId.trim()
@@ -501,6 +487,22 @@ router.put(
 
       if (req.file) {
         updateData.image = req.file.path;
+      } else if (
+        updateData.image &&
+        typeof updateData.image === "string" &&
+        updateData.image.trim()
+      ) {
+        try {
+          updateData.image = await uploadImageToCloudinary(
+            updateData.image.trim(),
+            "products"
+          );
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            error: `Image upload failed: ${e.message}`,
+          });
+        }
       }
 
       if (updateData.price) {
