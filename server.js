@@ -44,7 +44,7 @@ const app = express();
 // app.use(cors());
 app.use(
   cors({
-    origin: "http://localhost:5173", // No wildcard, exact port
+    origin: ["http://localhost:5173", "http://localhost:5174","https://ecommerce-lz-vibe.vercel.app/"], // No wildcard, exact port
     credentials: true, // Required since you're using cookies/auth
   }),
 );
