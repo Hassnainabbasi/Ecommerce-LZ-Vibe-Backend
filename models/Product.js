@@ -31,6 +31,30 @@ const ProductSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  compareAtPrice: {
+    type: Number,
+    default: 0
+  },
+  discountPercent: {
+    type: Number,
+    default: 0
+  },
+  isWeeklyOffer: {
+    type: Boolean,
+    default: false
+  },
+  offerLabel: {
+    type: String,
+    default: ""
+  },
+  offerEndsAt: {
+    type: Date,
+    default: null
+  },
+  isFeatured: {
+    type: Boolean,
+    default: false
+  },
   createdAt: { 
     type: Date, 
     default: Date.now 

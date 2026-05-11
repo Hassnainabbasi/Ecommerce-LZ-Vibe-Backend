@@ -81,7 +81,7 @@ router.get("/test", async (req, res) => {
       success: true,
       message: "Products API is working",
       totalProducts: count,
-      sample,
+      sample: withOfferDefaults(sample),
       env: {
         cloudinary: !!(
           process.env.CLOUDINARY_CLOUD_NAME &&
@@ -113,7 +113,7 @@ router.get("/stats/count", async (req, res) => {
 router.get("/getAllProducts", async (req, res) => {
   try {
     const products = await Product.find({}).sort({ createdAt: -1 }).lean();
-    res.json({ success: true, products });
+    res.json({ success: true, products: products.map(withOfferDefaults) });
   } catch (err) {
     console.error("Error retrieving all products:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -130,7 +130,7 @@ router.get("/", async (req, res) => {
       .sort({ category: 1, createdAt: -1 })
       .lean();
 
-    res.json(products);
+    res.json(products.map(withOfferDefaults));
   } catch (err) {
     console.error("Error fetching products:", err);
     res.status(500).json({ error: err.message });
@@ -149,6 +149,87 @@ function normalizeFlavorForBulk(flavor) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+const OFFER_FIELD_DEFAULTS = {
+  compareAtPrice: 0,
+  discountPercent: 0,
+  isWeeklyOffer: false,
+  offerLabel: "",
+  offerEndsAt: null,
+  isFeatured: false,
+};
+
+function hasField(source, field) {
+  return Object.prototype.hasOwnProperty.call(source, field);
+}
+
+function parseOptionalNumber(value, field) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return 0;
+
+  const numberValue = Number(value);
+  if (Number.isNaN(numberValue) || numberValue < 0) {
+    throw new Error(`${field} must be a valid non-negative number`);
+  }
+  return numberValue;
+}
+
+function parseOptionalBoolean(value) {
+  if (value === undefined) return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off", ""].includes(normalized)) return false;
+  }
+  return Boolean(value);
+}
+
+function parseOptionalDate(value, field) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${field} must be a valid date`);
+  }
+  return date;
+}
+
+function normalizeOfferFields(source, includeDefaults = false) {
+  const data = includeDefaults ? { ...OFFER_FIELD_DEFAULTS } : {};
+
+  if (includeDefaults || hasField(source, "compareAtPrice")) {
+    data.compareAtPrice =
+      parseOptionalNumber(source.compareAtPrice, "compareAtPrice") ?? 0;
+  }
+  if (includeDefaults || hasField(source, "discountPercent")) {
+    data.discountPercent =
+      parseOptionalNumber(source.discountPercent, "discountPercent") ?? 0;
+  }
+  if (includeDefaults || hasField(source, "isWeeklyOffer")) {
+    data.isWeeklyOffer =
+      parseOptionalBoolean(source.isWeeklyOffer) ?? false;
+  }
+  if (includeDefaults || hasField(source, "offerLabel")) {
+    data.offerLabel =
+      source.offerLabel == null ? "" : String(source.offerLabel).trim();
+  }
+  if (includeDefaults || hasField(source, "offerEndsAt")) {
+    data.offerEndsAt = parseOptionalDate(source.offerEndsAt, "offerEndsAt") ?? null;
+  }
+  if (includeDefaults || hasField(source, "isFeatured")) {
+    data.isFeatured = parseOptionalBoolean(source.isFeatured) ?? false;
+  }
+
+  return data;
+}
+
+function withOfferDefaults(product) {
+  if (!product) return product;
+  return { ...OFFER_FIELD_DEFAULTS, ...product };
 }
 
 router.post("/bulk-import", verifyAdmin, async (req, res) => {
@@ -261,6 +342,17 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
         }
       }
 
+      let offerData;
+      try {
+        offerData = normalizeOfferFields(row, true);
+      } catch (e) {
+        errors.push({
+          index: i,
+          reason: e.message,
+        });
+        continue;
+      }
+
       let productId =
         typeof row.productId === "string" && row.productId.trim()
           ? row.productId.trim()
@@ -275,6 +367,7 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
           weight,
           flavor: normalizeFlavorForBulk(row.flavor),
           image,
+          ...offerData,
         });
         await doc.save();
         inserted.push(doc);
@@ -290,6 +383,7 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
               weight,
               flavor: normalizeFlavorForBulk(row.flavor),
               image,
+              ...offerData,
             });
             await doc.save();
             inserted.push(doc);
@@ -348,7 +442,7 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    res.json(product);
+    res.json(withOfferDefaults(product));
   } catch (err) {
     console.error("Error fetching product:", err);
     res.status(500).json({ error: err.message });
@@ -422,6 +516,16 @@ router.post(
         });
       }
 
+      let offerData;
+      try {
+        offerData = normalizeOfferFields(req.body, true);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          error: e.message,
+        });
+      }
+
       // Create product
       const newProduct = new Product({
         productId: `PROD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -431,6 +535,7 @@ router.post(
         weight: weight?.trim() || "",
         flavor: flavor?.trim() || "",
         image: req.file?.path || null,
+        ...offerData,
       });
 
       console.log("Saving product:", {
@@ -522,6 +627,15 @@ router.put(
             error: `Image upload failed: ${e.message}`,
           });
         }
+      }
+
+      try {
+        Object.assign(updateData, normalizeOfferFields(req.body, false));
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          error: e.message,
+        });
       }
 
       if (updateData.price) {

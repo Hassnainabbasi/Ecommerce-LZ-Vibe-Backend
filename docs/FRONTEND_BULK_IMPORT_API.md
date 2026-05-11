@@ -133,6 +133,12 @@ Aam errors: `401` token galat / expire, `403` token nahi mila ya admin nahi.
 | `flavor` | Nahi | string (comma se flavours alag), ya string array, ya skip → `[]` |
 | `image` | Nahi | Public remote URL ya base64 data URL bhejo — Cloudinary pe upload ho kar **secure URL** DB mein jati hai. Na ho to placeholder `"/images/placeholder.png"`. `/images/...` jaisa frontend local path mat bhejna. Tumhari Cloudinary pe pehle se hosted URL ho to skip re-upload |
 | `productId` | Nahi | unique; na do to server khud bana deta hai |
+| `compareAtPrice` | Nahi | number; original/cut price, default `0` |
+| `discountPercent` | Nahi | number; discount percentage, default `0` |
+| `isWeeklyOffer` | Nahi | boolean; default `false` |
+| `offerLabel` | Nahi | string; offer badge/label, default `""` |
+| `offerEndsAt` | Nahi | date string/ISO date; na ho to `null` |
+| `isFeatured` | Nahi | boolean; default `false` |
 
 ### Category ka behavior
 
@@ -175,6 +181,12 @@ Products bulk mein jo `category` name bhejoge:
       "name": "Whey Protein 2kg",
       "category": "protein",
       "price": 5499,
+      "compareAtPrice": 6499,
+      "discountPercent": 15,
+      "isWeeklyOffer": true,
+      "offerLabel": "Weekly Deal",
+      "offerEndsAt": "2026-05-20T23:59:59.000Z",
+      "isFeatured": true,
       "weight": "2 kg",
       "flavor": "chocolate, vanilla"
     }
