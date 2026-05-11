@@ -44,14 +44,20 @@ export function isOurCloudinaryDeliveryUrl(url) {
 /**
  * Remote http(s) URL, Cloudinary fetch URL, or data:image/*;base64,... → uploads to Cloudinary.
  * Already-hosted assets on this Cloudinary cloud → returned unchanged.
- * Local app paths like /images/placeholder.png → returned unchanged.
+ * Default placeholder path → returned unchanged.
  */
 export async function uploadImageToCloudinary(source, folder) {
   const trimmed = typeof source === "string" ? source.trim() : "";
   if (!trimmed) return null;
 
-  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+  if (trimmed === "/images/placeholder.png") {
     return trimmed;
+  }
+
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    throw new Error(
+      "Local image paths cannot be uploaded. Send a public image URL or base64 data URL."
+    );
   }
 
   if (isOurCloudinaryDeliveryUrl(trimmed)) {
