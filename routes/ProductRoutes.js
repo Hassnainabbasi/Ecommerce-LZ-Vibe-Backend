@@ -175,12 +175,13 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
       });
     }
 
-    const activeCategories = await Category.find({ isActive: true })
+    const categories = await Category.find({})
       .select("name")
       .lean();
-    const activeSet = new Set(activeCategories.map((c) => c.name));
+    const categorySet = new Set(categories.map((c) => c.name));
 
     const inserted = [];
+    const createdCategories = [];
     const errors = [];
 
     for (let i = 0; i < raw.length; i++) {
@@ -213,13 +214,29 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
         continue;
       }
 
-      if (!activeSet.has(category)) {
-        errors.push({
-          index: i,
-          reason: "invalid or inactive category",
-          received: categoryRaw,
-        });
-        continue;
+      if (!categorySet.has(category)) {
+        try {
+          const newCategory = new Category({
+            name: category,
+            description: "",
+            image: "",
+            isActive: true,
+          });
+          await newCategory.save();
+          categorySet.add(category);
+          createdCategories.push(newCategory);
+        } catch (e) {
+          if (e.code === 11000) {
+            categorySet.add(category);
+          } else {
+            errors.push({
+              index: i,
+              reason: `category create failed: ${e.message}`,
+              received: categoryRaw,
+            });
+            continue;
+          }
+        }
       }
 
       const weight =
@@ -299,9 +316,11 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
       summary: {
         total: raw.length,
         inserted: inserted.length,
+        categoriesCreated: createdCategories.length,
         errors: errors.length,
       },
       inserted,
+      createdCategories,
       errors,
     });
   } catch (err) {

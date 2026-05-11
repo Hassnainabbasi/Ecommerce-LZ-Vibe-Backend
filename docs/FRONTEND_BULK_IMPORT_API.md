@@ -127,16 +127,19 @@ Aam errors: `401` token galat / expire, `403` token nahi mila ya admin nahi.
 | Field | Zaroori? | Baat |
 |--------|----------|------|
 | `name` | Haan | string |
-| `category` | Haan | string; server **lowercase + trim** karta hai; ye naam **database mein active category** ke `name` se match hona chahiye |
+| `category` | Haan | string; server **lowercase + trim** karta hai. Agar ye category DB mein ho to product usi naam ke saath save hoga; agar na ho to backend us naam ki active category khud create kar dega |
 | `price` | Haan | number, 0 se bara |
 | `weight` | Nahi | string |
 | `flavor` | Nahi | string (comma se flavours alag), ya string array, ya skip → `[]` |
 | `image` | Nahi | Public remote URL ya base64 data URL bhejo — Cloudinary pe upload ho kar **secure URL** DB mein jati hai. Na ho to placeholder `"/images/placeholder.png"`. `/images/...` jaisa frontend local path mat bhejna. Tumhari Cloudinary pe pehle se hosted URL ho to skip re-upload |
 | `productId` | Nahi | unique; na do to server khud bana deta hai |
 
-### Zaroori baat: category pehle honi chahiye
+### Category ka behavior
 
-Products bulk se pehle woh categories **bani hui aur active** honi chahiye (single create API ya categories bulk se). Warna us row pe error aayegi: `invalid or inactive category`.
+Products bulk mein jo `category` name bhejoge:
+
+- Agar category pehle se DB mein hai, product usi category name ke saath save hoga.
+- Agar category DB mein nahi hai, backend us naam ki category auto-create karega (`isActive: true`) aur phir product save karega.
 
 ### Limit
 
@@ -152,11 +155,13 @@ Products bulk se pehle woh categories **bani hui aur active** honi chahiye (sing
   "summary": {
     "total": 5,
     "inserted": 4,
+    "categoriesCreated": 1,
     "errors": 1
   },
   "inserted": [ /* saved products */ ],
+  "createdCategories": [ /* products import ke during jo nayi categories bani */ ],
   "errors": [
-    { "index": 2, "reason": "invalid or inactive category", "received": "unknown" }
+    { "index": 2, "reason": "price must be a valid positive number", "received": "-10" }
   ]
 }
 ```
@@ -177,7 +182,7 @@ Products bulk se pehle woh categories **bani hui aur active** honi chahiye (sing
 }
 ```
 
-`category` wohi spelling / naam ho jo DB mein **lowercase `name`** ke tor pe save hai (frontend `"Protein"` bhej bhi de to server lowercase kar deta hai, lekin DB mein asal naam `"protein"` hona chahiye warna match nahi hoga).
+`category` frontend `"Protein"` bhej bhi de to server usay lowercase karke `"protein"` bana deta hai. Agar `"protein"` DB mein nahi hai to nayi category ban jayegi.
 
 ---
 
@@ -190,8 +195,8 @@ Backend `cors` mein abhi `origin: "http://localhost:5173"` aur `credentials: tru
 ## Frontend checklist (short)
 
 1. Admin login → phir cookie ya Bearer se calls.
-2. Pehle categories bulk (agar zaroorat ho) → `skipped` / `errors` UI pe dikhao.
-3. Products bulk → har row ki `category` active list se match karao (dropdown best rehta hai).
+2. Categories bulk optional hai; products bulk missing categories khud bana dega.
+3. Products bulk → response mein `createdCategories` dikha sakte ho taake admin ko pata chale kya naya bana.
 4. Dono `POST` pe `Content-Type: application/json` aur body `JSON.stringify(...)`.
 
 ---
