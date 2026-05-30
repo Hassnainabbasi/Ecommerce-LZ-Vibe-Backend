@@ -44,7 +44,7 @@ const app = express();
 // app.use(cors());
 app.use(
   cors({
-    origin: "https://ecommerce-lz-vibe.vercel.app", // Frontend origin, no trailing slash
+    origin: ["https://ecommerce-lz-vibe.vercel.app","https://lzstore-ruby.vercel.app"], // Frontend origin, no trailing slash
     credentials: true, // Required since you're using cookies/auth
   }),
 );
