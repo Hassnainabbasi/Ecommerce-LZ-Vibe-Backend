@@ -1,64 +1,79 @@
 import mongoose from "mongoose";
 
 const ProductSchema = new mongoose.Schema({
-  productId: { 
-    type: String, 
-    required: false, 
-    unique: true 
-  },
-  name: { 
-    type: String, 
-    required: true 
-  },
-  price: { 
-    type: Number, 
-    required: true 
-  },
-  image: { 
+  productId: {
     type: String,
-    default: '/images/placeholder.png'
+    required: false,
+    unique: true,
   },
-  category: { 
-    type: String, 
+  name: {
+    type: String,
     required: true,
-    index: true 
   },
-  flavor: { 
+  price: {
+    type: Number,
+    required: true,
+  },
+  // support multiple images per product
+  image: {
     type: [String],
-    default: []
+    default: ["/images/placeholder.png"],
   },
-  weight: { 
+  category: {
     type: String,
-    default: ''
+    required: true,
+    index: true,
+  },
+  flavor: {
+    type: [String],
+    default: [],
+  },
+  // Inventory and variant fields for admin dashboard
+  stockQuantity: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  sizes: {
+    type: [String],
+    default: [],
+  },
+  colors: {
+    type: [String],
+    default: [],
+  },
+  weight: {
+    type: String,
+    default: "",
   },
   compareAtPrice: {
     type: Number,
-    default: 0
+    default: 0,
   },
   discountPercent: {
     type: Number,
-    default: 0
+    default: 0,
   },
   isWeeklyOffer: {
     type: Boolean,
-    default: false
+    default: false,
   },
   offerLabel: {
     type: String,
-    default: ""
+    default: "",
   },
   offerEndsAt: {
     type: Date,
-    default: null
+    default: null,
   },
   isFeatured: {
     type: Boolean,
-    default: false
+    default: false,
   },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
-  }
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
 });
 
 ProductSchema.index({ category: 1, createdAt: -1 });

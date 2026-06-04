@@ -46,7 +46,7 @@ app.use(
   cors({
     origin: "https://ecommerce-lz-vibe.vercel.app", // Frontend origin, no trailing slash
     credentials: true, // Required since you're using cookies/auth
-  }),
+  })
 );
 app.use(cookieParser());
 app.use(bodyParser.json());

@@ -5,7 +5,8 @@ import { products } from "../data.js";
 
 dotenv.config();
 
-const MONGO = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/Shark-Nutrition";
+const MONGO =
+  process.env.MONGO_URI || "mongodb://127.0.0.1:27017/Shark-Nutrition";
 
 async function seed() {
   try {
@@ -16,13 +17,13 @@ async function seed() {
     console.log("Cleared existing products");
 
     const flatProducts = [];
-    
-    products.forEach(category => {
+
+    products.forEach((category) => {
       if (!category.products || !Array.isArray(category.products)) {
         return;
       }
 
-      category.products.forEach(p => {
+      category.products.forEach((p) => {
         if (!p.productId || !p.name || p.price == null) {
           return;
         }
@@ -31,10 +32,16 @@ async function seed() {
           productId: String(p.productId),
           name: p.name,
           price: Number(p.price),
-          image: p.image || '/images/placeholder.png',
+          image: Array.isArray(p.image)
+            ? p.image
+            : [p.image || "/images/placeholder.png"],
           category: category.category,
-          flavor: Array.isArray(p.flavor) ? p.flavor : (p.flavor ? [p.flavor] : []),
-          weight: p.weight || ''
+          flavor: Array.isArray(p.flavor)
+            ? p.flavor
+            : p.flavor
+              ? [p.flavor]
+              : [],
+          weight: p.weight || "",
         });
       });
     });

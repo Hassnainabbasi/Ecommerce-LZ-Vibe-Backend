@@ -76,7 +76,7 @@ router.get("/test", async (req, res) => {
   try {
     const count = await Product.countDocuments();
     const sample = await Product.findOne().lean();
-    
+
     res.json({
       success: true,
       message: "Products API is working",
@@ -143,9 +143,25 @@ const MAX_BULK_PRODUCTS = 500;
 function normalizeFlavorForBulk(flavor) {
   if (flavor == null || flavor === "") return [];
   if (Array.isArray(flavor)) {
-    return flavor.map(String).map((s) => s.trim()).filter(Boolean);
+    return flavor
+      .map(String)
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   return String(flavor)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function normalizeList(value) {
+  if (value == null || value === "") return [];
+  if (Array.isArray(value))
+    return value
+      .map(String)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  return String(value)
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -210,15 +226,15 @@ function normalizeOfferFields(source, includeDefaults = false) {
       parseOptionalNumber(source.discountPercent, "discountPercent") ?? 0;
   }
   if (includeDefaults || hasField(source, "isWeeklyOffer")) {
-    data.isWeeklyOffer =
-      parseOptionalBoolean(source.isWeeklyOffer) ?? false;
+    data.isWeeklyOffer = parseOptionalBoolean(source.isWeeklyOffer) ?? false;
   }
   if (includeDefaults || hasField(source, "offerLabel")) {
     data.offerLabel =
       source.offerLabel == null ? "" : String(source.offerLabel).trim();
   }
   if (includeDefaults || hasField(source, "offerEndsAt")) {
-    data.offerEndsAt = parseOptionalDate(source.offerEndsAt, "offerEndsAt") ?? null;
+    data.offerEndsAt =
+      parseOptionalDate(source.offerEndsAt, "offerEndsAt") ?? null;
   }
   if (includeDefaults || hasField(source, "isFeatured")) {
     data.isFeatured = parseOptionalBoolean(source.isFeatured) ?? false;
@@ -256,9 +272,7 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
       });
     }
 
-    const categories = await Category.find({})
-      .select("name")
-      .lean();
+    const categories = await Category.find({}).select("name").lean();
     const categorySet = new Set(categories.map((c) => c.name));
 
     const inserted = [];
@@ -268,7 +282,9 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
     for (let i = 0; i < raw.length; i++) {
       const row = raw[i];
       const name =
-        typeof row?.name === "string" ? row.name.trim() : String(row?.name ?? "").trim();
+        typeof row?.name === "string"
+          ? row.name.trim()
+          : String(row?.name ?? "").trim();
       const categoryRaw = row?.category;
       const category =
         typeof categoryRaw === "string"
@@ -325,14 +341,14 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
           ? String(row.weight).trim()
           : "";
 
-      let image = "/images/placeholder.png";
+      let image = ["/images/placeholder.png"];
       if (typeof row.image === "string" && row.image.trim()) {
         try {
           const uploaded = await uploadImageToCloudinary(
             row.image.trim(),
             "products"
           );
-          if (uploaded) image = uploaded;
+          if (uploaded) image = [uploaded];
         } catch (e) {
           errors.push({
             index: i,
@@ -367,6 +383,10 @@ router.post("/bulk-import", verifyAdmin, async (req, res) => {
           weight,
           flavor: normalizeFlavorForBulk(row.flavor),
           image,
+          sizes: normalizeList(row.sizes),
+          colors: normalizeList(row.colors),
+          stockQuantity:
+            parseOptionalNumber(row.stockQuantity, "stockQuantity") ?? 0,
           ...offerData,
         });
         await doc.save();
@@ -436,9 +456,9 @@ router.get("/:id", async (req, res) => {
     }
 
     if (!product) {
-      return res.status(404).json({ 
-        success: false, 
-        error: "Product not found" 
+      return res.status(404).json({
+        success: false,
+        error: "Product not found",
       });
     }
 
@@ -454,7 +474,7 @@ router.post(
   "/",
   verifyAdmin,
   (req, res, next) => {
-    upload.single("image")(req, res, (err) => {
+    upload.array("image", 8)(req, res, (err) => {
       if (err) {
         console.error("❌ Multer error:", err);
         return res.status(400).json({
@@ -469,7 +489,10 @@ router.post(
     try {
       console.log("=== POST /products ===");
       console.log("Body:", req.body);
-      console.log("File:", req.file ? "Present" : "None");
+      console.log(
+        "Files:",
+        req.files && req.files.length ? `${req.files.length} file(s)` : "None"
+      );
       console.log("Admin:", req.admin);
 
       const { name, category, price, weight, flavor } = req.body;
@@ -496,23 +519,25 @@ router.post(
 
       // Validate category from database
       const cleanCategory = category.toLowerCase().trim();
-      const categoryExists = await Category.findOne({ 
+      const categoryExists = await Category.findOne({
         name: cleanCategory,
-        isActive: true 
+        isActive: true,
       });
-      
+
       if (!categoryExists) {
         // Get all active categories for error message
         const allCategories = await Category.find({ isActive: true })
           .select("name")
           .lean();
-        const categoryNames = allCategories.map(cat => cat.name).join(", ");
-        
+        const categoryNames = allCategories.map((cat) => cat.name).join(", ");
+
         return res.status(400).json({
           success: false,
           error: `Invalid category. Category must exist in database and be active.`,
           received: category,
-          availableCategories: categoryNames || "No categories available. Please create categories first.",
+          availableCategories:
+            categoryNames ||
+            "No categories available. Please create categories first.",
         });
       }
 
@@ -526,6 +551,30 @@ router.post(
         });
       }
 
+      // Prepare images (support multiple files or comma-separated URLs)
+      let images = ["/images/placeholder.png"];
+      if (req.files && req.files.length > 0) {
+        images = req.files.map((f) => f.path);
+      } else if (typeof req.body.image === "string" && req.body.image.trim()) {
+        const parts = req.body.image
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        images = [];
+        for (const p of parts) {
+          try {
+            const uploaded = await uploadImageToCloudinary(p, "products");
+            if (uploaded) images.push(uploaded);
+          } catch (e) {
+            console.warn(
+              "Image upload failed for provided image string:",
+              e.message
+            );
+          }
+        }
+        if (images.length === 0) images = ["/images/placeholder.png"];
+      }
+
       // Create product
       const newProduct = new Product({
         productId: `PROD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -534,7 +583,11 @@ router.post(
         price: numPrice,
         weight: weight?.trim() || "",
         flavor: flavor?.trim() || "",
-        image: req.file?.path || null,
+        image: images,
+        sizes: normalizeList(req.body.sizes),
+        colors: normalizeList(req.body.colors),
+        stockQuantity:
+          parseOptionalNumber(req.body.stockQuantity, "stockQuantity") ?? 0,
         ...offerData,
       });
 
@@ -590,7 +643,7 @@ router.put(
   "/:id",
   verifyAdmin,
   (req, res, next) => {
-    upload.single("image")(req, res, (err) => {
+    upload.array("image", 8)(req, res, (err) => {
       if (err) {
         return res.status(400).json({
           success: false,
@@ -605,22 +658,31 @@ router.put(
       console.log("=== PUT /products/:id ===");
       console.log("ID:", req.params.id);
       console.log("Body:", req.body);
-      console.log("File:", req.file ? "Present" : "None");
+      console.log(
+        "Files:",
+        req.files && req.files.length ? `${req.files.length} file(s)` : "None"
+      );
 
       const updateData = { ...req.body };
 
-      if (req.file) {
-        updateData.image = req.file.path;
+      if (req.files && req.files.length > 0) {
+        updateData.image = req.files.map((f) => f.path);
       } else if (
         updateData.image &&
         typeof updateData.image === "string" &&
         updateData.image.trim()
       ) {
         try {
-          updateData.image = await uploadImageToCloudinary(
-            updateData.image.trim(),
-            "products"
-          );
+          const parts = updateData.image
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const uploaded = [];
+          for (const p of parts) {
+            const u = await uploadImageToCloudinary(p, "products");
+            if (u) uploaded.push(u);
+          }
+          if (uploaded.length) updateData.image = uploaded;
         } catch (e) {
           return res.status(400).json({
             success: false,
@@ -642,36 +704,47 @@ router.put(
         updateData.price = Number(updateData.price);
       }
 
+      // normalize sizes/colors and stock if present
+      if (updateData.sizes) updateData.sizes = normalizeList(updateData.sizes);
+      if (updateData.colors)
+        updateData.colors = normalizeList(updateData.colors);
+      if (updateData.stockQuantity !== undefined)
+        updateData.stockQuantity = parseOptionalNumber(
+          updateData.stockQuantity,
+          "stockQuantity"
+        );
+
       if (updateData.category) {
         const cleanCategory = updateData.category.toLowerCase().trim();
-        const categoryExists = await Category.findOne({ 
+        const categoryExists = await Category.findOne({
           name: cleanCategory,
-          isActive: true 
+          isActive: true,
         });
-        
+
         if (!categoryExists) {
           // Get all active categories for error message
           const allCategories = await Category.find({ isActive: true })
             .select("name")
             .lean();
-          const categoryNames = allCategories.map(cat => cat.name).join(", ");
-          
+          const categoryNames = allCategories.map((cat) => cat.name).join(", ");
+
           return res.status(400).json({
             success: false,
             error: `Invalid category. Category must exist in database and be active.`,
             received: updateData.category,
-            availableCategories: categoryNames || "No categories available. Please create categories first.",
+            availableCategories:
+              categoryNames ||
+              "No categories available. Please create categories first.",
           });
         }
-        
+
         updateData.category = cleanCategory;
       }
 
-      let updated = await Product.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        { new: true, runValidators: true }
-      );
+      let updated = await Product.findByIdAndUpdate(req.params.id, updateData, {
+        new: true,
+        runValidators: true,
+      });
 
       if (!updated) {
         updated = await Product.findOneAndUpdate(
@@ -716,16 +789,30 @@ router.delete("/:id", verifyAdmin, async (req, res) => {
       });
     }
 
-    // Delete image from Cloudinary
-    if (removed.image) {
+    // Delete image(s) from Cloudinary
+    if (removed.image && Array.isArray(removed.image)) {
+      for (const img of removed.image) {
+        try {
+          const publicId = String(img)
+            .split("/")
+            .slice(-2)
+            .join("/")
+            .split(".")[0];
+          await cloudinary.uploader.destroy(publicId);
+          console.log("✅ Image deleted from Cloudinary", publicId);
+        } catch (cloudErr) {
+          console.error("⚠️ Failed to delete image:", cloudErr);
+        }
+      }
+    } else if (removed.image) {
       try {
-        const publicId = removed.image
+        const publicId = String(removed.image)
           .split("/")
           .slice(-2)
           .join("/")
           .split(".")[0];
         await cloudinary.uploader.destroy(publicId);
-        console.log("✅ Image deleted from Cloudinary");
+        console.log("✅ Image deleted from Cloudinary", publicId);
       } catch (cloudErr) {
         console.error("⚠️ Failed to delete image:", cloudErr);
       }
